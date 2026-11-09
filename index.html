@@ -77,6 +77,14 @@ main{flex:1;position:relative;overflow:hidden;min-height:0}
 .card small{display:block;margin-top:16px;color:var(--sub);font-size:12px}
 .drop main::after{content:"ここに離すと開きます";position:absolute;inset:12px;border:3px dashed var(--accent);border-radius:16px;display:grid;place-items:center;font-size:18px;color:var(--accent);background:rgb(255 255 255 / .6);pointer-events:none}
 
+/* bars hidden by a tap on the gray area */
+.bare header.bar,.bare footer.bar{display:none}
+.floatpager{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:6;
+  display:flex;align-items:center;gap:2px;padding:4px;border-radius:24px;background:rgb(38 35 31 / .72);color:#fff;
+  font-size:13px;font-variant-numeric:tabular-nums;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.floatpager .ib{height:40px;min-width:44px;border-radius:20px}
+.floatpager .ib:hover{background:rgb(255 255 255 / .15)}
+.floatpager span{min-width:48px;text-align:center}
 .fitbtn{position:absolute;right:12px;bottom:12px;background:var(--pop);border-radius:20px;height:36px;padding:0 14px;font-size:12px;box-shadow:0 2px 10px rgb(0 0 0 / .18)}
 
 /* popovers */
@@ -169,6 +177,11 @@ input:checked + .sw::after{transform:translateX(16px)}
   </div>
   <button class="fitbtn" id="fitBtn" hidden>全体を表示</button>
 </main>
+<div class="floatpager" id="floatPager" hidden>
+  <button class="ib" id="fPrev" title="前のページ（←）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+  <span id="fPageNo">1 / 1</span>
+  <button class="ib" id="fNext" title="次のページ（→）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+</div>
 
 <footer class="bar" id="tools">
   <button class="ib tool" data-tool="pen" aria-pressed="true" title="ペン（P）">
@@ -295,8 +308,8 @@ function resize(){
   dpr = Math.min(window.devicePixelRatio||1, 3);
   W = r.width; H = r.height;
   cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr);
-  if(pages.length){ const keep = view.zoom; resetView(); if(keep>1.02){ /* simple: back to fit on rotate */ } }
-  requestRender();
+  if(pages.length) resetView();
+  render();
 }
 new ResizeObserver(resize).observe(mainEl);
 
@@ -445,6 +458,7 @@ function hasInk(){ return pages.some(p => p.strokes.length); }
 /* ---------- render ---------- */
 let renderQueued = false;
 const laser = []; // {pts, w, end}
+const LASER_HOLD = 5000; // the disappearing pen stays this long after lifting, then fades
 function requestRender(){ if(!renderQueued){ renderQueued = true; requestAnimationFrame(render); } }
 function render(){
   renderQueued = false;
@@ -463,7 +477,7 @@ function render(){
   const now = performance.now(); let alive = false;
   for(let i=laser.length-1;i>=0;i--){
     const L = laser[i]; let a = 1;
-    if(L.end){ a = 1 - (now - L.end)/700; if(a<=0){ laser.splice(i,1); continue; } }
+    if(L.end){ a = 1 - (now - L.end - LASER_HOLD)/700; if(a<=0){ laser.splice(i,1); continue; } a = Math.min(1, a); }
     alive = true; drawStroke(ctx, L, a);
   }
   ctx.restore();
@@ -502,8 +516,17 @@ cv.addEventListener('pointerdown', e => {
   }
   if(e.pointerType === 'mouse' && e.button !== 0){ gesture = {kind:'pan', id:e.pointerId, sx, sy, ox:view.ox, oy:view.oy, t:performance.now()}; return; }
   if(gesture) return;
+  if(ptrs.size === 1 && !onPage(sx, sy)){ gesture = {kind:'tap', id:e.pointerId, sx, sy, t:performance.now()}; return; }
   startDrawing(e, sx, sy);
 });
+function onPage(sx, sy){
+  const p = pages[cur];
+  return sx >= view.ox && sy >= view.oy && sx <= view.ox + p.w*view.scale && sy <= view.oy + p.h*view.scale;
+}
+function setBare(on){
+  document.body.classList.toggle('bare', on);
+  closePops(); updateUI();
+}
 
 cv.addEventListener('pointermove', e => {
   const q = ptrs.get(e.pointerId);
@@ -530,6 +553,12 @@ function endPointer(e, cancelled){
   if(gesture && gesture.kind==='pinch'){
     if(touchList().length < 2) gesture = null;
     return;
+  }
+  if(gesture && gesture.kind==='tap' && gesture.id===e.pointerId){
+    const [sx,sy] = local(e);
+    if(!cancelled && Math.hypot(sx-gesture.sx, sy-gesture.sy) < 12 && performance.now()-gesture.t < 500)
+      setBare(!document.body.classList.contains('bare'));
+    gesture = null; return;
   }
   if(gesture && gesture.kind==='pan' && gesture.id===e.pointerId){
     const [sx,sy] = local(e); const dx = sx-gesture.sx, dy = sy-gesture.sy, dt = performance.now()-gesture.t;
@@ -654,7 +683,11 @@ function updateUI(){
   $('#empty').hidden = has;
   $('#pager').hidden = pages.length < 2;
   $('#pageNo').textContent = (cur+1)+' / '+pages.length;
-  $('#prevBtn').disabled = cur===0; $('#nextBtn').disabled = cur>=pages.length-1;
+  $('#prevBtn').disabled = $('#fPrev').disabled = cur===0;
+  $('#nextBtn').disabled = $('#fNext').disabled = cur>=pages.length-1;
+  $('#fPageNo').textContent = $('#pageNo').textContent;
+  if(!has) document.body.classList.remove('bare');
+  $('#floatPager').hidden = !(document.body.classList.contains('bare') && pages.length > 1);
   $('#saveBtn').disabled = !has;
   $('#undoBtn').disabled = !(p && p.undo.length);
   $('#redoBtn').disabled = !(p && p.redo.length);
@@ -725,6 +758,8 @@ $('#blankBtn').onclick = () => { pages = [blankPage()]; docName = '白い紙'; g
 $('#addBlank').onclick = () => { closePops(); pages.splice(cur+1, 0, blankPage()); if(pages.length===1) docName='白い紙'; goTo(pages.length===1?0:cur+1); };
 $('#prevBtn').onclick = () => goTo(cur-1);
 $('#nextBtn').onclick = () => goTo(cur+1);
+$('#fPrev').onclick = () => goTo(cur-1);
+$('#fNext').onclick = () => goTo(cur+1);
 $('#undoBtn').onclick = undo; $('#redoBtn').onclick = redo;
 $('#fitBtn').onclick = () => { resetView(); requestRender(); };
 $('#fingerDraw').onchange = e => { st.fingerDraw = e.target.checked; saveSettings(); toast(st.fingerDraw ? '指でも書けるようにしました' : '指は動かす・ページめくり専用にしました'); };
