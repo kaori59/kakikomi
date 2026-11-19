@@ -80,6 +80,7 @@ main{flex:1;position:relative;overflow:hidden;min-height:0}
 
 /* bars hidden by a tap on the gray area */
 .bare header.bar,.bare footer.bar{display:none}
+.bare .toast{bottom:calc(14px + env(safe-area-inset-bottom,0px))}
 .floatpager{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:6;
   display:flex;align-items:center;gap:2px;padding:4px;border-radius:24px;background:rgb(38 35 31 / .72);color:#fff;
   font-size:13px;font-variant-numeric:tabular-nums;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
@@ -544,9 +545,18 @@ function onPage(sx, sy){
   const p = pages[cur];
   return sx >= view.ox && sy >= view.oy && sx <= view.ox + p.w*view.scale && sy <= view.oy + p.h*view.scale;
 }
+// one tap on the gray area: bars gone + browser full screen; next tap: bars back
+let bareFs = false, bareHinted = false;
 function setBare(on){
   document.body.classList.toggle('bare', on);
   closePops(); updateUI();
+  const el = document.documentElement;
+  if(on){
+    if(!document.fullscreenElement && el.requestFullscreen){ bareFs = true; el.requestFullscreen().catch(() => { bareFs = false; }); }
+    if(!bareHinted){ bareHinted = true; toast(pages.length > 1 ? 'もう一度ポンでバーが出ます。グレーの所を左右にはらうとページが変わります' : 'もう一度ポンでバーが出ます', 3500); }
+  } else if(bareFs){
+    bareFs = false; if(document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
 }
 
 cv.addEventListener('pointermove', e => {
@@ -576,9 +586,11 @@ function endPointer(e, cancelled){
     return;
   }
   if(gesture && gesture.kind==='tap' && gesture.id===e.pointerId){
-    const [sx,sy] = local(e);
-    if(!cancelled && Math.hypot(sx-gesture.sx, sy-gesture.sy) < 12 && performance.now()-gesture.t < 500)
+    const [sx,sy] = local(e); const dx = sx-gesture.sx, dy = sy-gesture.sy, dt = performance.now()-gesture.t;
+    if(!cancelled && Math.hypot(dx, dy) < 12 && dt < 500)
       setBare(!document.body.classList.contains('bare'));
+    else if(!cancelled && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)*1.5 && dt < 800)
+      goTo(dx < 0 ? cur+1 : cur-1); // swipe on the gray area turns the page
     gesture = null; return;
   }
   if(gesture && gesture.kind==='pan' && gesture.id===e.pointerId){
@@ -708,7 +720,7 @@ function updateUI(){
   $('#nextBtn').disabled = $('#fNext').disabled = cur>=pages.length-1;
   $('#fPageNo').textContent = $('#pageNo').textContent;
   if(!has) document.body.classList.remove('bare');
-  $('#floatPager').hidden = !(document.body.classList.contains('bare') && pages.length > 1);
+  $('#floatPager').hidden = true; // full screen shows nothing over the slide (page number covered text in landscape)
   $('#saveBtn').disabled = !has;
   $('#undoBtn').disabled = !(p && p.undo.length);
   $('#redoBtn').disabled = !(p && p.redo.length);
@@ -854,7 +866,11 @@ $('#fsBtn').onclick = async () => {
     else toast('この端末では全画面にできません。ホーム画面に追加して開くと広く使えます', 4000);
   }catch(e){ toast('全画面にできませんでした'); }
 };
-document.addEventListener('fullscreenchange', updateUI);
+document.addEventListener('fullscreenchange', () => {
+  if(!document.fullscreenElement) bareFs = false;
+  updateUI(); resize(); setTimeout(resize, 250); // the screen size settles a moment after entering/leaving full screen
+});
+window.addEventListener('resize', () => resize());
 
 /* keyboard */
 document.addEventListener('keydown', e => {
