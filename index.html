@@ -52,7 +52,8 @@ footer.bar{border-top:1px solid var(--bar-line);justify-content:center;padding:6
 .spacer{flex:1}
 .pager{display:flex;align-items:center;font-variant-numeric:tabular-nums;font-size:13px;color:var(--sub)}
 .pager .ib{padding:0 6px}
-.pager span{min-width:52px;text-align:center}
+.pnum{min-width:64px;height:34px;padding:0 10px;border-radius:17px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;color:var(--text);border:1px solid var(--bar-line)}
+.pnum:hover{background:var(--hover)}
 .save{background:var(--btn-on);color:var(--btn-on-text)}
 .save:hover{background:var(--btn-on);opacity:.88}
 
@@ -84,7 +85,21 @@ main{flex:1;position:relative;overflow:hidden;min-height:0}
   font-size:13px;font-variant-numeric:tabular-nums;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .floatpager .ib{height:40px;min-width:44px;border-radius:20px}
 .floatpager .ib:hover{background:rgb(255 255 255 / .15)}
-.floatpager span{min-width:48px;text-align:center}
+.floatpager .pnum{color:#fff;border-color:rgb(255 255 255 / .35)}
+.floatpager .pnum:hover{background:rgb(255 255 255 / .15)}
+/* page picker */
+.pgveil{position:fixed;inset:0;z-index:30;background:var(--desk);display:flex;flex-direction:column}
+.pghead{display:flex;align-items:center;gap:8px;background:var(--bar);border-bottom:1px solid var(--bar-line);padding:calc(env(safe-area-inset-top,0px) + 8px) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
+.pghead h2{flex:1;margin:0;font-size:16px}
+.pggrid{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px 14px;align-content:start;padding:16px max(16px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left))}
+.thumb{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums}
+.thumb .tbox{width:100%;aspect-ratio:4/3;display:grid;place-items:center}
+.thumb canvas,.thumb .ph{max-width:100%;max-height:100%;background:#fff;border-radius:4px;box-shadow:0 1px 4px rgb(0 0 0 / .2)}
+.thumb .ph{width:75%;height:75%}
+.thumb[aria-current="true"] canvas,.thumb[aria-current="true"] .ph{outline:3px solid var(--accent);outline-offset:3px}
+.thumb[aria-current="true"]{color:var(--accent);font-weight:700}
+.thumb .ink{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-left:4px;vertical-align:middle}
+@media (max-width:420px){.pggrid{grid-template-columns:repeat(2,1fr)}}
 .fitbtn{position:absolute;right:12px;bottom:12px;background:var(--pop);border-radius:20px;height:36px;padding:0 14px;font-size:12px;box-shadow:0 2px 10px rgb(0 0 0 / .18)}
 
 /* popovers */
@@ -148,7 +163,7 @@ input:checked + .sw::after{transform:translateX(16px)}
   <div class="spacer"></div>
   <div class="pager" id="pager" hidden>
     <button class="ib" id="prevBtn" title="前のページ（←）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
-    <span id="pageNo">1 / 1</span>
+    <button class="pnum" id="pageNo" title="全ページから選ぶ">1 / 1</button>
     <button class="ib" id="nextBtn" title="次のページ（→）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
   </div>
   <div class="spacer"></div>
@@ -179,7 +194,7 @@ input:checked + .sw::after{transform:translateX(16px)}
 </main>
 <div class="floatpager" id="floatPager" hidden>
   <button class="ib" id="fPrev" title="前のページ（←）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
-  <span id="fPageNo">1 / 1</span>
+  <button class="pnum" id="fPageNo" title="全ページから選ぶ">1 / 1</button>
   <button class="ib" id="fNext" title="次のページ（→）"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
 </div>
 
@@ -240,6 +255,12 @@ input:checked + .sw::after{transform:translateX(16px)}
 <!-- save dialog -->
 <div class="veil" id="saveVeil" hidden>
   <div class="dlg" id="saveDlg"></div>
+</div>
+
+<!-- page picker -->
+<div class="pgveil" id="pgVeil" hidden>
+  <div class="pghead"><h2>ページを選ぶ</h2><button class="ib" id="pgClose" title="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="pggrid" id="pgGrid"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -760,6 +781,57 @@ $('#prevBtn').onclick = () => goTo(cur-1);
 $('#nextBtn').onclick = () => goTo(cur+1);
 $('#fPrev').onclick = () => goTo(cur-1);
 $('#fNext').onclick = () => goTo(cur+1);
+$('#pageNo').onclick = openPicker;
+$('#fPageNo').onclick = openPicker;
+$('#pgClose').onclick = closePicker;
+
+/* ---------- page picker ---------- */
+const TH = 320; // thumbnail long side in px (sharp enough on retina at ~150px)
+let pickerToken = 0;
+async function thumbBg(p){
+  if(p.thumbBg) return p.thumbBg;
+  const k = TH/Math.max(p.w,p.h), c = document.createElement('canvas');
+  c.width = Math.round(p.w*k); c.height = Math.round(p.h*k);
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0,0,c.width,c.height);
+  if(p.src.type === 'pdf'){
+    const pg = await p.src.pdf.getPage(p.src.index);
+    await pg.render({canvasContext:x, viewport:pg.getViewport({scale:p.src.scale*k})}).promise;
+  } else x.drawImage(await getBg(p), 0, 0, c.width, c.height);
+  return (p.thumbBg = c);
+}
+async function drawThumb(p, holder){
+  const bg = await thumbBg(p), c = document.createElement('canvas');
+  c.width = bg.width; c.height = bg.height;
+  const x = c.getContext('2d'); x.drawImage(bg,0,0);
+  x.scale(c.width/p.w, c.height/p.h);
+  for(const s of p.strokes) drawStroke(x, s);
+  holder.replaceChildren(c);
+}
+function openPicker(){
+  if(pages.length < 2) return;
+  closePops();
+  const grid = $('#pgGrid'), token = ++pickerToken;
+  grid.replaceChildren();
+  const items = pages.map((p,i) => {
+    const b = document.createElement('button'); b.className = 'thumb';
+    b.setAttribute('aria-current', String(i===cur));
+    b.setAttribute('aria-label', (i+1)+'ページ目');
+    b.innerHTML = '<div class="tbox"><div class="ph" style="aspect-ratio:'+p.w+'/'+p.h+'"></div></div><span>'+(i+1)+(p.strokes.length?'<i class="ink" title="書きこみあり"></i>':'')+'</span>';
+    b.onclick = () => { closePicker(); goTo(i); };
+    grid.appendChild(b); return b;
+  });
+  $('#pgVeil').hidden = false;
+  items[cur].scrollIntoView({block:'center'});
+  // draw thumbnails one by one, current page's neighbourhood first
+  const order = pages.map((_,i)=>i).sort((a,b)=>Math.abs(a-cur)-Math.abs(b-cur));
+  (async () => {
+    for(const i of order){
+      if(token !== pickerToken || $('#pgVeil').hidden) return;
+      try{ await drawThumb(pages[i], items[i].firstElementChild); }catch(e){ console.error(e); }
+    }
+  })();
+}
+function closePicker(){ $('#pgVeil').hidden = true; pickerToken++; }
 $('#undoBtn').onclick = undo; $('#redoBtn').onclick = redo;
 $('#fitBtn').onclick = () => { resetView(); requestRender(); };
 $('#fingerDraw').onchange = e => { st.fingerDraw = e.target.checked; saveSettings(); toast(st.fingerDraw ? '指でも書けるようにしました' : '指は動かす・ページめくり専用にしました'); };
@@ -797,7 +869,7 @@ document.addEventListener('keydown', e => {
   else if(k==='p') setTool('pen'); else if(k==='m') setTool('marker');
   else if(k==='l') setTool('laser'); else if(k==='e') setTool('eraser');
   else if(k==='f') $('#fsBtn').click();
-  else if(k==='escape') closePops();
+  else if(k==='escape'){ closePops(); closePicker(); }
 });
 
 /* paste & drop */
